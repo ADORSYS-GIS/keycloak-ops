@@ -347,7 +347,7 @@ The `oauth2` crate provides a solid foundation for OAuth2 integration in Rust ap
 - Add **proper error handling** and **token refresh logic**
 - Consider **`openidconnect` crate** for full OIDC compliance
 
-## 📚 References & Further Reading
+## 📚 References & Further Reading00000000000000000000000000000
 
 **Official Documentation:**
 - [oauth2 crate documentation](https://docs.rs/oauth2/latest/oauth2/)

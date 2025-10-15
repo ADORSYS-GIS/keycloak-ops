@@ -4,6 +4,7 @@
 
 The `oauth2` crate is a comprehensive, strongly-typed OAuth 2.0 client library for Rust applications. This documentation covers our complete implementation with Keycloak, including working demos for both Resource Owner Password Credentials Grant and Implicit Grant flows.
 
+
 **Purpose in Keycloak Ecosystem:**
 - Primary OAuth 2.0/OIDC client integration library for Rust applications
 - Enables secure authentication and authorization with Keycloak servers
@@ -16,57 +17,60 @@ The `oauth2` crate is a comprehensive, strongly-typed OAuth 2.0 client library f
 - **GitHub Stars:** 1.1k+ ⭐
 - **Contributors:** 90+ active collaborators
 - **Last Commit:** April 19, 2025 (actively maintained)
-- **JWT Validation:** Real-time token verification using Keycloak's public keys
 - **Protected Endpoints:** Functional API endpoints with token-based authentication
 - **License:** MIT/Apache-2.0 dual license
 
 ## ⚙️ Key Features
 
-**Authentication & Authorization Support:**
-- Authorization Code Grant (with PKCE support)
-- Implicit Grant Flow
-- Authorization Code Grant (with PKCE support)
+## 🚀 Supported OAuth 2.0 Flows
 
-- Authorization Code Grant (with PKCE support)
-- Implicit Grant Flow
-- Client Credentials Grant
-- Device Authorization Grant
-- Custom grant type extensibility
-- Client Credentials Grant
-- Device Authorization Grant
-- Custom grant type extensibility
+| Flow | Status | Description |
+|------|--------|-------------|
+| **Authorization Code Flow** | ✅ **Recommended** | Standard web-server flow (RFC 6749 §4.1). Most secure for web applications. |
+| **Authorization Code + PKCE** | ✅ **Best Practice** | Enhanced security with Proof Key for Code Exchange (RFC 7636). Ideal for SPAs and mobile apps. |
+| **Resource Owner Password** | ✅ **Legacy** | Direct username/password flow (RFC 6749 §4.3). Supported but discouraged for new apps. |
+| **Client Credentials Flow** | ✅ **Server-to-Server** | Machine-to-machine communication (RFC 6749 §4.4). No user consent required. |
+| **Device Authorization Grant** | ✅ **IoT/CLI** | For devices without browsers (RFC 8628). Perfect for CLI tools and IoT devices. |
+| **Implicit Flow** | ⚠️ **Deprecated** | Supported for backward compatibility but not recommended for new systems. |
 
-- Client Credentials Grant
-- Device Authorization Grant
-- Custom grant type extensibility
+## 🧰 What You Can Build
 
-- Resource Owner Password Credentials Grant
-- Authorization Code Grant (with PKCE support)
-- Implicit Grant Flow
-- Client Credentials Grant
-- Device Authorization Grant
-- Custom grant type extensibility
+Using this crate, you can easily implement:
 
-**Token Management:**
+**✅ Secure OAuth2 Clients:**
+- Web applications with session management
+- CLI tools with device flow authentication  
+- Desktop applications with embedded browser flows
+- Mobile apps with PKCE-secured authorization
+
+**✅ Service Integration:**
+- Service-to-service (machine) authorization using client credentials
+- Integration with **Keycloak, GitHub, Google**, or other OAuth2 providers
+- Multi-tenant applications with dynamic provider selection
+
+**✅ Advanced Token Management:**
+- Custom token management logic (refresh, revoke, introspect)
+- Automatic token renewal and caching
+- Token validation and claims extraction
+- Secure token storage patterns
+
+## ⚙️ Our Implementation Features
+
+**✅ JWT Token Management:**
 - **JWT Signature Verification:** Using Keycloak's JWKS endpoint
 - **Real-time Token Validation:** Cryptographic verification of token authenticity
 - **Claims Extraction:** User information from validated JWT tokens
 - **Token Expiration Handling:** Automatic validation of token lifetime
 - **Protected Resource Access:** Bearer token authentication for API endpoints
 
-**Implemented Features:**
+**✅ Implemented Flows:**
 - **Resource Owner Password Grant:** Direct username/password authentication
-- **Implicit Grant Flow:** Browser-based authentication for SPAs
+- **Implicit Grant Flow:** Browser-based authentication for SPAs  
+- **Authorization Code Flow with PKCE:** Most secure flow with refresh tokens
 - **JWT Validation:** Full cryptographic verification using RSA public keys
 - **Protected Endpoints:** `/protected` and `/api/userinfo` with token validation
 - **User Information Display:** Extracted from validated JWT claims
-
-**Framework Integration:**
-- **Axum:** Complete async web framework implementation
-- **Tokio:** Full async/await support with non-blocking operations
-- **Reqwest:** HTTP client for Keycloak API interactions
-- **Serde:** JSON serialization for OAuth2 responses and JWT claims
-- **Chrono:** Token expiration and timestamp handling
+- **Refresh Token Support:** Long-term access via Authorization Code flow
 
 ## 🧠 Architecture & Design
 
@@ -82,22 +86,25 @@ The `oauth2` crate is a comprehensive, strongly-typed OAuth 2.0 client library f
 - Concurrent token refresh handling
 - Stream-based token processing
 
-**Dependency Footprint (Actual Implementation):**
-- **Core:** `oauth2 = "5.0.0"`, `serde`, `tokio`, `anyhow`
-- **HTTP Client:** `reqwest` for async Keycloak API calls
-- **JWT Validation:** `jsonwebtoken = "9.2"`, `base64 = "0.21"`
-- **Web Framework:** `axum = "0.7"`, `tower-http` for CORS
-- **JSON:** `serde_json` for OAuth2 responses and JWT claims
-- **Time:** `chrono = "0.4"` for token expiration handling
-- **Utilities:** `uuid`, `urlencoding`, `clap` for CLI interface
-
 **Compatibility (Tested):**
 - **Rust Edition:** 2021 (MSRV: 1.65.0)
 - **Async Runtime:** Tokio 1.0+ (fully tested)
 - **Keycloak Version:** 23.0+ (tested with latest)
 - **TLS:** Full HTTPS support for production Keycloak instances
 
+## 🧠 OAuth2 vs OpenID Connect Clarification
+
+**Important Distinction:**
+
+| Concept | What It Means | Is It Supported by oauth2 crate? |
+|---------|---------------|-----------------------------------|
+| **Authorization** | Granting access to an app to use APIs/resources on behalf of a user (e.g. "allow app X to access my profile") | ✅ **Yes** — this is the crate's main purpose |
+| **Authentication (Login)** | Identifying who the user is (e.g. "this is user Alice, logged in via Keycloak") | ❌ **No** — this needs OpenID Connect (OIDC), not pure OAuth2 |
+
+
 ## ⚠️ Known Issues & Considerations
+
+### Current GitHub Issues (Still to be Solved)
 
 Based on the current GitHub issues (as of April 2025), be aware of these potential challenges:
 
@@ -109,6 +116,36 @@ Based on the current GitHub issues (as of April 2025), be aware of these potenti
 - **Error handling:** Status 200 responses that should return errors
 - **Documentation:** Examples may need updates for latest features
 
+### Core Limitations of oauth2 Crate
+
+**No JSON Web Token (JWT) Handling / ID Token Verification:**
+- Since OIDC features aren't included, features like verifying JWT signatures, parsing ID tokens, validating claims, etc., are outside of this crate's scope
+- You'd need `openidconnect` or another JWT library for that (which is what our implementation does)
+
+**Limitation on Minimum Rust Version:**
+- Newer versions require Rust 1.65 or newer
+- If your project uses older Rust, you may not be able to update to the latest
+
+**Lack of Discovery / Dynamic Configuration:**
+- The crate does not automatically fetch OAuth/OIDC metadata via ".well-known/..." endpoints
+- You must manually configure the authorization URL, token URL, etc.
+- Configuration is less flexible if you want to support multiple identity providers or allow runtime selection
+
+**Manual Error Handling / Token Validation:**
+- The crate handles certain parts (making HTTP requests, parsing standard token responses, revocation, introspection)
+- But you are responsible for handling error conditions properly (timeouts, invalid responses, mismatch of scopes, token expiration, refresh logic)
+- If using JWT access or ID tokens, verification of signatures, checking claims (issuer, audience, expiry) is outside the scope of this crate
+
+### How Our Implementation Addresses These Limitations
+
+**✅ JWT Signature Verification:** Using `jsonwebtoken` crate + Keycloak JWKS
+**✅ Claims Extraction:** From validated JWT tokens  
+**✅ Real-time Validation:** Using Keycloak's public keys
+**✅ Authentication-like Experience:** By combining OAuth2 + JWT validation
+**✅ Comprehensive Error Handling:** For all failure scenarios
+**✅ Production-Ready Security:** With PKCE and refresh token support
+**✅ Discovery Workaround:** Manual but reliable configuration for Keycloak
+
 ## 🔐 Integration Flow
 
 ### Resource Owner Password Credentials Grant
@@ -117,7 +154,7 @@ Based on the current GitHub issues (as of April 2025), be aware of these potenti
 Direct username/password exchange for access tokens. Suitable for highly trusted first-party applications where the client can securely handle user credentials.
 
 **How Tokens are Fetched (Implemented Flow):**
-1. User enters credentials in web form
+1. User enters credentials in web form (`username`/`password`)
 2. Credentials sent via POST to an endpoint
 3. Server exchanges credentials with Keycloak token endpoint using `oauth2` crate
 4. Keycloak validates credentials and returns JWT access token
@@ -183,7 +220,7 @@ async fn validate_jwt_token(token: &str, keycloak_config: &KeycloakConfig) -> an
 Browser-based flow for public clients (SPAs, mobile apps) where client secrets cannot be securely stored. Access token returned directly in URL fragment.
 
 **How Tokens are Fetched (Implemented Flow):**
-1. User clicks "🚀 Start Authentication" button on home page
+1. User clicks login button on home page
 2. Browser redirects to Keycloak authorization endpoint with `response_type=token`
 3. User authenticates via Keycloak login interface
 4. Keycloak redirects to `/callback#access_token=...&token_type=Bearer` (token in URL fragment)
@@ -232,3 +269,116 @@ async fn handle_callback(Query(params): Query<AuthCallback>) -> Result<Html<Stri
     "#.to_string()))
 }
 ```
+
+### Authorization Code Flow with PKCE
+
+**Authentication Mechanism:**
+The most secure OAuth2 flow, recommended for modern applications. Uses PKCE (Proof Key for Code Exchange) to prevent code interception attacks and provides both access and refresh tokens.
+
+**How Tokens are Fetched (Implemented Flow):**
+1. User clicks login button on home page
+2. Server generates PKCE challenge and verifier pair
+3. Browser redirects to Keycloak authorization endpoint with PKCE challenge
+4. User authenticates via Keycloak login interface
+5. Keycloak redirects to `/callback?code=...` with authorization code
+6. Server exchanges code + PKCE verifier for tokens
+7. **Both access token AND refresh token** returned
+8. Success page validates JWT using Keycloak's public keys
+
+**Token Verification (Implemented):**
+- **Server-side JWT Validation:** Same cryptographic verification as other flows
+- **JWKS Public Key Verification:** Real-time validation using Keycloak's certificates
+- **Refresh Token Available:** Long-term access without re-authentication
+- **PKCE Security:** Prevents code interception attacks
+- **Token Expiration:** Configurable in Keycloak client settings
+
+**Security Benefits:**
+- **PKCE Protection:** SHA256-based code challenge prevents interception
+- **Refresh Tokens:** Long-term access without storing credentials
+- **Server-side Exchange:** Authorization code never exposed to client-side JavaScript
+- **Most Secure:** Recommended by OAuth 2.1 specification
+
+**Actual Working Implementation:**
+```rust
+// Authorization Code flow with PKCE - Key components
+async fn start_auth(State(state): State<AppState>) -> Result<Redirect, StatusCode> {
+    // Generate PKCE challenge and verifier
+    let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
+    
+    // Store verifier for callback
+    *state.pkce_verifier.lock().unwrap() = Some(pkce_verifier);
+    
+    // Build authorization URL with PKCE
+    let (auth_url, _) = state.oauth_client
+        .authorize_url(CsrfToken::new_random)
+        .add_scope(Scope::new("openid".to_string()))
+        .set_pkce_challenge(pkce_challenge)
+        .url();
+    
+    Ok(Redirect::to(auth_url.as_str()))
+}
+
+// Handle callback and exchange code for tokens
+async fn handle_callback(State(state): State<AppState>, Query(params): Query<AuthCallback>) 
+    -> Result<Html<String>, Html<String>> {
+    if let Some(code) = params.code {
+        let pkce_verifier = state.pkce_verifier.lock().unwrap().take();
+        
+        if let Some(verifier) = pkce_verifier {
+            // Exchange code + PKCE verifier for tokens
+            let token_result = state.oauth_client
+                .exchange_code(AuthorizationCode::new(code))
+                .set_pkce_verifier(verifier)
+                .request_async(oauth2::reqwest::async_http_client)
+                .await;
+            
+            match token_result {
+                Ok(token) => {
+                    let access_token = token.access_token().secret();
+                    // Redirect to userinfo endpoint with Bearer token
+                    return Ok(Html(format!(r#"
+                        <script>
+                            fetch('/api/userinfo', {{
+                                headers: {{ 'Authorization': 'Bearer {}' }}
+                            }})
+                            .then(r => r.json())
+                            .then(data => /* Display user profile */);
+                        </script>
+                    "#, access_token)));
+                }
+                Err(e) => Err(Html(format!("Token exchange failed: {}", e)))
+            }
+        }
+    }
+    Err(Html("Invalid callback".to_string()))
+}
+```
+
+## 🎯 Conclusion
+
+The `oauth2` crate provides a solid foundation for OAuth2 integration in Rust applications, though it requires additional work for production-ready authentication systems. Key takeaways:
+
+**✅ Strengths:**
+- **Type-safe OAuth2 implementation** with excellent async support
+- **PKCE support** for modern security requirements
+- **Flexible client configuration** for various OAuth2 providers
+- **Active maintenance** with regular updates
+
+**⚠️ Considerations:**
+- **Manual JWT validation** required for authentication use cases
+- **No OIDC discovery** - manual endpoint configuration needed
+- **Limited built-in error handling** for edge cases
+
+**🔧 Production Recommendations:**
+- Use **Authorization Code + PKCE** flow for maximum security
+- Implement **comprehensive JWT validation** with provider's JWKS
+- Add **proper error handling** and **token refresh logic**
+- Consider **`openidconnect` crate** for full OIDC compliance
+
+## 📚 References & Further Reading
+
+**Official Documentation:**
+- [oauth2 crate documentation](https://docs.rs/oauth2/latest/oauth2/)
+- [OAuth2 Documentation](https://oauth.net/2/)
+
+**Alternative Rust Crates:**

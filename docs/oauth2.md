@@ -136,15 +136,6 @@ Based on the current GitHub issues (as of April 2025), be aware of these potenti
 - But you are responsible for handling error conditions properly (timeouts, invalid responses, mismatch of scopes, token expiration, refresh logic)
 - If using JWT access or ID tokens, verification of signatures, checking claims (issuer, audience, expiry) is outside the scope of this crate
 
-### How Our Implementation Addresses These Limitations
-
-**✅ JWT Signature Verification:** Using `jsonwebtoken` crate + Keycloak JWKS
-**✅ Claims Extraction:** From validated JWT tokens  
-**✅ Real-time Validation:** Using Keycloak's public keys
-**✅ Authentication-like Experience:** By combining OAuth2 + JWT validation
-**✅ Comprehensive Error Handling:** For all failure scenarios
-**✅ Production-Ready Security:** With PKCE and refresh token support
-**✅ Discovery Workaround:** Manual but reliable configuration for Keycloak
 
 ## 🔐 Integration Flow
 

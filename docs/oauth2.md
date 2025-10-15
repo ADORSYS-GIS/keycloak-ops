@@ -117,7 +117,7 @@ Based on the current GitHub issues (as of April 2025), be aware of these potenti
 Direct username/password exchange for access tokens. Suitable for highly trusted first-party applications where the client can securely handle user credentials.
 
 **How Tokens are Fetched (Implemented Flow):**
-1. User enters credentials in web form (`username`/`password`)
+1. User enters credentials in web form
 2. Credentials sent via POST to an endpoint
 3. Server exchanges credentials with Keycloak token endpoint using `oauth2` crate
 4. Keycloak validates credentials and returns JWT access token

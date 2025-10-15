@@ -151,12 +151,6 @@ Direct username/password exchange for access tokens. Suitable for highly trusted
 4. Keycloak validates credentials and returns JWT access token
 5. User redirected to an endpoint with token
 
-**Token Verification (Implemented):**
-- **JWT Signature Validation:** Using Keycloak's JWKS endpoint (`/realms/master/protocol/openid-connect/certs`)
-- **RSA Public Key Verification:** Cryptographic validation of token authenticity
-- **Claims Extraction:** Username, email, subject, issuer, expiration from JWT
-- **Real-time Validation:** Every protected endpoint validates tokens before access
-
 **Actual Working Implementation:**
 ```rust
 // From crate-test/src/main.rs - Password authentication handler
@@ -218,12 +212,6 @@ Browser-based flow for public clients (SPAs, mobile apps) where client secrets c
 5. JavaScript extracts token from URL fragment and redirects to `<endpoint>?access_token=...`
 6. Success page validates JWT using Keycloak's public keys
 
-**Token Verification (Implemented):**
-- **Server-side JWT Validation:** Same cryptographic verification as password flow
-- **JWKS Public Key Verification:** Real-time validation using Keycloak's certificates
-- **No Refresh Token:** Implicit flow provides only access tokens (by design)
-- **Token Expiration:** Configurable in Keycloak client settings
-
 **Actual Working Implementation:**
 ```rust
 // From crate-test/src/main.rs - Start implicit flow authentication
@@ -275,13 +263,6 @@ The most secure OAuth2 flow, recommended for modern applications. Uses PKCE (Pro
 6. Server exchanges code + PKCE verifier for tokens
 7. **Both access token AND refresh token** returned
 8. Success page validates JWT using Keycloak's public keys
-
-**Token Verification (Implemented):**
-- **Server-side JWT Validation:** Same cryptographic verification as other flows
-- **JWKS Public Key Verification:** Real-time validation using Keycloak's certificates
-- **Refresh Token Available:** Long-term access without re-authentication
-- **PKCE Security:** Prevents code interception attacks
-- **Token Expiration:** Configurable in Keycloak client settings
 
 **Security Benefits:**
 - **PKCE Protection:** SHA256-based code challenge prevents interception

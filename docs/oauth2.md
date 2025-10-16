@@ -1,5 +1,7 @@
 # 🧩 oauth2 Crate Integration with Keycloak
 
+> 🔐 **Looking for user authentication?** Check out our [**OpenID Connect documentation**](./openidconnect.md) for identity management and user login systems.
+
 ## 📦 Overview
 
 The `oauth2` crate is a comprehensive, strongly-typed OAuth 2.0 client library for Rust applications. This documentation covers our complete implementation with Keycloak, including working demos for both Resource Owner Password Credentials Grant and Implicit Grant flows.

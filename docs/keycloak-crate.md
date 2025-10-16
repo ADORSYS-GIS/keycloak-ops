@@ -134,9 +134,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 **rust-keycloak** is another Rust crate for interacting with Keycloak. It provides both OpenID Connect and admin API access, focusing on authentication flows and basic user management.
 
+
 - **Latest Version:** 0.0.6
 - **Ecosystem Role:** OpenID Connect integration and basic admin operations.
 - **Maintenance:** Less active, fewer features than `keycloak` crate.
+
 
 ## Key Features
 
@@ -170,6 +172,12 @@ let token_request = rust_keycloak::serde_json::json!({
 let tok = rust_keycloak::keycloak::OpenId::token("http://localhost:8080", &token_request).await?;
 println!("Access token: {}", tok.access_token);
 ```
+
+## References
+
+   - [Crates.io: rust-keycloak](https://crates.io/crates/rust-keycloak)
+   - [GitHub: tritone11/rust-keycloak](https://github.com/tritone11/rust-keycloak)
+
 
 ## Comparison: `keycloak` vs `rust-keycloak`
 

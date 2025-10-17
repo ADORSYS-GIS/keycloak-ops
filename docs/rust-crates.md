@@ -2,11 +2,11 @@
 
 ## Complete Crates Comparison Table
 
-| Crate | Category / Use | Purpose | Integration Role with Keycloak | Pros / Strengths | Limitations / Notes |
+| Crate | Use | Purpose | Integration Role with Keycloak | Pros / Strengths | Limitations / Notes |
 |-------|---|---|---|---|---|
 | **jsonwebtoken** | JWT Validation / Decoding | Create, decode, and verify JSON Web Tokens (JWTs) using RSA, HMAC, or ECDSA. | Validates Keycloak's access tokens or ID tokens on resource servers. | Mature, actively maintained, supports all JOSE algorithms. | Manual key rotation; you must fetch JWKS and handle caching. |
 | **reqwest** | HTTP Client | Async/sync HTTP client for making external web requests. | Used to fetch Keycloak's OIDC discovery document and JWKS (public keys). | Easy to use, integrates with tokio, supports async, TLS, and redirects. | Larger binary size; slower than lightweight clients for small apps. |
-| **serde / serde_json** | Data Parsing / Serialization | Define Rust structs to serialize/deserialize JSON data. | Used to parse Keycloak discovery metadata, user claims, or configuration. | Essential for all Keycloak JSON payloads; stable and widely used. | None significant — it's the standard. |
+| **serde / serde_json** | Data Parsing / Serialization | Define Rust structs to serialize/deserialize JSON data. | Used to parse Keycloak discovery metadata, user claims, or configuration. | Essential for all Keycloak JSON payloads; stable and widely used. | None significant  it's the standard. |
 | **jwt-simple** | Simplified JWT Handling | A lightweight, non-opinionated JWT library for signing and verifying tokens. | Alternative to jsonwebtoken for simpler token workflows. | Very small dependency footprint; simple API. | Doesn't support all advanced JOSE algorithms like RSA+PS. |
 | **async-oidc-jwt-validator** | Token Validation / Discovery | Validates tokens from any OIDC provider with JWKS fetching & caching. | Validates and caches Keycloak's signing keys automatically. | Great for backend services needing scalable validation. | Slightly lower ecosystem adoption. |
 | **axum-keycloak-auth** | Axum Middleware | Provides authentication/authorization middleware for Axum. | Secures Axum routes using Keycloak-issued JWTs; validates roles and claims. | Automatic OIDC discovery; role extraction; minimal setup. | Framework-specific (Axum only). |

@@ -13,14 +13,7 @@ This repository provides two deployment methods for Keycloak on Kubernetes:
 
 ## ✨ Recent Updates (Version 26.4.0)
 
-**All files have been updated to Keycloak 26.4.0**. To complete the setup, create two additional template files:
-
-### Required New Files:
-
-1. **`helm/keycloak/templates/networkpolicy.yaml`** - Network security policies (see docs/HELM_DEPLOYMENT.md)
-2. **`helm/keycloak/templates/configmap.yaml`** - Custom configuration support (see docs/HELM_DEPLOYMENT.md)
-
-Complete file contents are provided in the documentation.
+**All files have been updated to Keycloak 26.4.0**.
 
 ## Features
 

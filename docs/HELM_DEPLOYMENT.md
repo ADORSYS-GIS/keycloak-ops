@@ -1,25 +1,5 @@
 # Keycloak Helm Deployment Guide
 
-## New Template Files Required
-
-To complete the Helm chart setup, create the following new template files:
-
-### 1. NetworkPolicy Template
-
-**File:** `helm/keycloak/templates/networkpolicy.yaml`
-
-This template provides network-level security by restricting ingress and egress traffic.
-
-### 2. ConfigMap Template
-
-**File:** `helm/keycloak/templates/configmap.yaml`
-
-This template allows mounting custom configuration, themes, or realm definitions.
-
-See the "Additional Template Files" section at the end of this document for complete file contents.
-
-## Quick Start Commands
-
 This guide explains how to deploy Keycloak to a Kubernetes cluster using Helm.
 
 ## Prerequisites
@@ -82,29 +62,54 @@ minikube addons enable default-storageclass
 
 ## Quick Start
 
-### 1. Create Namespace
+**⚠️ Important:** The Helm chart does NOT include PostgreSQL by default (`postgresql.enabled=false` in values.yaml). You must deploy PostgreSQL separately or use an external database.
+
+### Option 1: Deploy with Bundled PostgreSQL (Local Testing)
 
 ```bash
+# Step 1: Create namespace
 kubectl create namespace keycloak
-```
 
-### 2. Deploy with Default Values (includes PostgreSQL)
+# Step 2: Deploy PostgreSQL from Kustomize base
+kubectl apply -f kustomize/base/postgres.yaml
 
-```bash
+# Step 3: Wait for PostgreSQL to be ready
+kubectl wait --for=condition=ready pod -l app=postgres -n keycloak --timeout=300s
+
+# Step 4: Install Keycloak with Helm
+# ⚠️ CRITICAL: database password MUST match postgres password (default: keycloak123)
 helm install keycloak ./helm/keycloak \
   --namespace keycloak \
-  --set keycloak.admin.password=YourSecureAdminPassword
+  --set keycloak.admin.password=admin123 \
+  --set keycloak.database.password=keycloak123
+
+# Step 5: Watch deployment
+kubectl get pods -n keycloak -w
+# Wait until keycloak pods show: 1/1 Running
+
+# Step 6: Access Keycloak (port-forward for testing)
+kubectl port-forward -n keycloak svc/keycloak 8080:8080
 ```
 
-### 3. Deploy without Embedded PostgreSQL (using external database)
+Access Keycloak at: <http://localhost:8080>  
+**Default credentials:** admin / admin123
+
+### Option 2: Deploy with External Database (Production)
 
 ```bash
+# Step 1: Create namespace
+kubectl create namespace keycloak
+
+# Step 2: Install Keycloak pointing to external database
 helm install keycloak ./helm/keycloak \
   --namespace keycloak \
   --set keycloak.admin.password=YourSecureAdminPassword \
   --set postgresql.enabled=false \
-  --set keycloak.database.host=your-postgres-host \
+  --set keycloak.database.host=your-postgres-host.example.com \
   --set keycloak.database.password=YourDbPassword
+
+# Step 3: Verify deployment
+kubectl get pods -n keycloak -w
 ```
 
 ## Configuration Options
@@ -316,22 +321,99 @@ kubectl get secret keycloak -n keycloak \
 
 ## Troubleshooting
 
+### Keycloak Pods in CrashLoopBackOff
+
+**Symptom:** Keycloak pods keep restarting and show `CrashLoopBackOff` status.
+
+**Common causes:**
+
+1. **PostgreSQL not deployed or not ready**
+   
+   If using the bundled postgres approach:
+   ```bash
+   # Check if postgres is running
+   kubectl get pods -n keycloak -l app=postgres
+   
+   # If not found, deploy it
+   kubectl apply -f kustomize/base/postgres.yaml
+   
+   # Wait for it to be ready
+   kubectl wait --for=condition=ready pod -l app=postgres -n keycloak --timeout=300s
+   ```
+
+2. **Password mismatch between Keycloak and PostgreSQL**
+   
+   The database password in Helm (`--set keycloak.database.password`) **MUST** match the password in PostgreSQL.
+   
+   For bundled postgres from `kustomize/base/postgres.yaml`, the default password is `keycloak123`.
+   
+   ```bash
+   # Check the postgres password
+   kubectl get secret postgres-secret -n keycloak -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d
+   
+   # Check the Helm-managed password
+   kubectl get secret keycloak -n keycloak -o jsonpath='{.data.db-password}' | base64 -d
+   
+   # If they don't match, reinstall with correct password
+   helm uninstall keycloak -n keycloak
+   helm install keycloak ./helm/keycloak \
+     --namespace keycloak \
+     --set keycloak.admin.password=admin123 \
+     --set keycloak.database.password=keycloak123
+   ```
+
+3. **Database connection refused**
+   
+   Check if Keycloak can reach the database:
+   ```bash
+   # Test connection from Keycloak pod
+   kubectl exec -n keycloak <keycloak-pod> -- \
+     nc -zv postgres-service 5432
+   ```
+
 ### Pods Not Starting
 
 ```bash
-# Describe pod
+# Describe pod to see events
 kubectl describe pod -n keycloak <pod-name>
 
-# Check logs
+# Check container logs
 kubectl logs -n keycloak <pod-name>
+
+# Check previous container logs (if pod restarted)
+kubectl logs -n keycloak <pod-name> --previous
 ```
 
 ### Database Connection Issues
 
 ```bash
+# Verify postgres is running
+kubectl get pods -n keycloak -l app=postgres
+
+# Check postgres service
+kubectl get svc postgres-service -n keycloak
+
 # Test database connectivity
 kubectl run -it --rm debug --image=postgres:15-alpine --restart=Never -- \
-  psql -h <db-host> -U keycloak -d keycloak
+  psql -h postgres-service.keycloak.svc.cluster.local -U keycloak -d keycloak
+```
+
+### Port-Forward Connection Refused
+
+**Symptom:** `kubectl port-forward` fails with "connection refused"
+
+```bash
+# Verify pods are actually ready (1/1)
+kubectl get pods -n keycloak
+
+# Check service endpoints
+kubectl get endpoints keycloak -n keycloak
+
+# Try port-forward directly to pod instead of service
+kubectl port-forward -n keycloak <pod-name> 8080:8080
+
+# Check if Keycloak is listening on port 8080
+kubectl exec -n keycloak <pod-name> -- netstat -tlnp | grep 8080
 ```
 
 ### Ingress Not Working
@@ -342,6 +424,9 @@ kubectl get pods -n ingress-nginx
 
 # Check ingress events
 kubectl describe ingress keycloak -n keycloak
+
+# Verify ingress class
+kubectl get ingressclass
 ```
 
 ## Production Checklist
@@ -389,187 +474,3 @@ kubectl exec -i -n keycloak <postgres-pod> -- \
 - [Keycloak Official Documentation](https://www.keycloak.org/documentation)
 - [Keycloak on Kubernetes Guide](https://www.keycloak.org/operator/installation)
 - [Helm Documentation](https://helm.sh/docs/)
-
----
-
-## Additional Template Files
-
-Create these new template files to complete the Helm chart:
-
-### NetworkPolicy Template
-
-**File:** `helm/keycloak/templates/networkpolicy.yaml`
-
-```yaml
-{{- if .Values.networkPolicy.enabled -}}
-# NetworkPolicy restricts network access to Keycloak pods
-# This implements a least-privilege network security model
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: {{ include "keycloak.fullname" . }}
-  labels:
-    {{- include "keycloak.labels" . | nindent 4 }}
-spec:
-  # Apply this policy to Keycloak pods
-  podSelector:
-    matchLabels:
-      {{- include "keycloak.selectorLabels" . | nindent 6 }}
-  
-  # Define allowed traffic types
-  policyTypes:
-    - Ingress
-    - Egress
-  
-  # Ingress rules: who can connect to Keycloak
-  ingress:
-    # Allow traffic from ingress controller
-    {{- if .Values.networkPolicy.ingress.enabled }}
-    - from:
-        {{- if .Values.networkPolicy.ingress.namespaceSelector }}
-        - namespaceSelector:
-            {{- toYaml .Values.networkPolicy.ingress.namespaceSelector | nindent 12 }}
-        {{- end }}
-        {{- if .Values.networkPolicy.ingress.podSelector }}
-        - podSelector:
-            {{- toYaml .Values.networkPolicy.ingress.podSelector | nindent 12 }}
-        {{- end }}
-      ports:
-        - protocol: TCP
-          port: 8080
-        - protocol: TCP
-          port: 8443
-    {{- end }}
-    
-    # Allow inter-pod communication for clustering (JGroups)
-    - from:
-        - podSelector:
-            matchLabels:
-              {{- include "keycloak.selectorLabels" . | nindent 14 }}
-      ports:
-        - protocol: TCP
-          port: 7800
-        - protocol: TCP
-          port: 8080
-  
-  # Egress rules: where Keycloak can connect to
-  egress:
-    # Allow DNS resolution
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: kube-system
-        - podSelector:
-            matchLabels:
-              k8s-app: kube-dns
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
-    
-    # Allow connection to PostgreSQL database
-    {{- if .Values.networkPolicy.egress.database.enabled }}
-    - to:
-        {{- if .Values.networkPolicy.egress.database.namespaceSelector }}
-        - namespaceSelector:
-            {{- toYaml .Values.networkPolicy.egress.database.namespaceSelector | nindent 12 }}
-        {{- end }}
-        {{- if .Values.networkPolicy.egress.database.podSelector }}
-        - podSelector:
-            {{- toYaml .Values.networkPolicy.egress.database.podSelector | nindent 12 }}
-        {{- end }}
-      ports:
-        - protocol: TCP
-          port: {{ include "keycloak.dbPort" . }}
-    {{- end }}
-    
-    # Allow HTTPS for external integrations (LDAP, OIDC providers, etc.)
-    {{- if .Values.networkPolicy.egress.external.enabled }}
-    - to:
-        - namespaceSelector: {}
-      ports:
-        - protocol: TCP
-          port: 443
-        - protocol: TCP
-          port: 636  # LDAPS
-    {{- end }}
-    
-    # Additional custom egress rules
-    {{- with .Values.networkPolicy.egress.custom }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
-{{- end }}
-```
-
-### ConfigMap Template
-
-**File:** `helm/keycloak/templates/configmap.yaml`
-
-```yaml
-{{- if .Values.configMap.enabled -}}
-# ConfigMap for custom Keycloak configuration
-# Use this to provide custom themes, providers, or realm configurations
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: {{ include "keycloak.fullname" . }}-config
-  labels:
-    {{- include "keycloak.labels" . | nindent 4 }}
-data:
-  {{- with .Values.configMap.data }}
-  {{- toYaml . | nindent 2 }}
-  {{- end }}
-{{- end }}
-```
-
-### Usage Examples
-
-#### Enable NetworkPolicy
-
-In your `values.yaml` or custom values file:
-
-```yaml
-networkPolicy:
-  enabled: true
-  ingress:
-    enabled: true
-    namespaceSelector:
-      matchLabels:
-        name: ingress-nginx
-  egress:
-    database:
-      enabled: true
-      podSelector:
-        matchLabels:
-          app: postgres
-    external:
-      enabled: true
-```
-
-#### Use ConfigMap for Custom Realm
-
-In your `values.yaml` or custom values file:
-
-```yaml
-configMap:
-  enabled: true
-  data:
-    realm.json: |
-      {
-        "realm": "myrealm",
-        "enabled": true,
-        "displayName": "My Realm",
-        "loginTheme": "base"
-      }
-  mountPath: /opt/keycloak/data/import
-```
-
-Then update the deployment args to import the realm:
-
-```yaml
-keycloak:
-  extraEnv:
-    - name: KEYCLOAK_IMPORT
-      value: /opt/keycloak/data/import/realm.json
-```

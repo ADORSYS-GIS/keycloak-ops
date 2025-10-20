@@ -9,8 +9,6 @@ This repository provides two deployment methods for Keycloak on Kubernetes:
 - **Kustomize** (Primary): GitOps-friendly manifests with environment-specific overlays
 - **Helm Charts**: Full-featured, configurable Helm chart for flexible deployments
 
-**✅ Status:** All deployments tested and working with Keycloak 26.4.0
-
 ## Prerequisites
 
 ### Required Tools
@@ -80,11 +78,16 @@ keycloak-ops/
 │       └── README.md
 ├── kustomize/
 │   ├── base/                  # Base manifests
+│   │   ├── configmap.yaml
 │   │   ├── deployment.yaml
-│   │   ├── service.yaml
 │   │   ├── ingress.yaml
+│   │   ├── kustomization.yaml
+│   │   ├── namespace.yaml
+│   │   ├── networkpolicy.yaml
 │   │   ├── postgres.yaml
-│   │   └── kustomization.yaml
+│   │   ├── secrets.yaml
+│   │   ├── serviceaccount.yaml
+│   │   └── service.yaml
 │   └── overlays/             # Environment overlays
 │       ├── dev/
 │       ├── staging/
@@ -183,25 +186,38 @@ kubectl get pods -n keycloak -w
 
 # Port forward to access
 kubectl port-forward -n keycloak svc/keycloak 8080:8080
-# Access: http://localhost:8080 (admin/admin123)
 ```
+
 Access: <http://localhost:8080> (admin/admin123)
+
 ### Method 2: Helm
+
 ```bash
 # Create Kind cluster
 kind create cluster --name keycloak-demo --config local/kind-config.yaml
+
 # Step 1: Deploy PostgreSQL first
 kubectl create namespace keycloak
-
 kubectl apply -f kustomize/base/postgres.yaml
 
-# Deploy keycloak via Helm
-helm install keycloak ./helm/keycloak --namespace keycloak \
-  --create-namespace \
-  --set ingress.enabled=false \
+# Step 2: Wait for PostgreSQL to be ready
+kubectl wait --for=condition=ready pod -l app=postgres -n keycloak --timeout=300s
+
+# Step 3: Deploy Keycloak with Helm
+# ⚠️ CRITICAL: database password MUST match postgres password (keycloak123)
+helm install keycloak ./helm/keycloak \
+  --namespace keycloak \
   --set keycloak.admin.password=admin123 \
   --set keycloak.database.password=keycloak123
+
+# Step 4: Watch deployment
+kubectl get pods -n keycloak -w
+
+# Step 5: Port forward to access
+kubectl port-forward -n keycloak svc/keycloak 8080:8080
 ```
+
+Access: <http://localhost:8080> (admin/admin123)
 
 ## Documentation
 

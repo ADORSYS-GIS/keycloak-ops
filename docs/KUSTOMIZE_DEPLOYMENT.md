@@ -2,8 +2,6 @@
 
 This guide explains how to deploy Keycloak to a Kubernetes cluster using Kustomize.
 
-**✅ Status:** All environments tested and working with Keycloak 26.4.0 + PostgreSQL 15
-
 ## Prerequisites
 
 - Kubernetes cluster (v1.24+)
@@ -64,12 +62,16 @@ minikube addons enable default-storageclass
 ```text
 kustomize/
 ├── base/                    # Base manifests
+│   ├── configmap.yaml
 │   ├── deployment.yaml
-│   ├── service.yaml
 │   ├── ingress.yaml
-│   ├── secrets.yaml
+│   ├── kustomization.yaml
+│   ├── namespace.yaml
+│   ├── networpolicy.yaml
 │   ├── postgres.yaml
-│   └── kustomization.yaml
+│   ├── secrets.yaml
+│   ├── service.yaml
+│   └── serviceaccount.yaml
 └── overlays/               # Environment-specific configs
     ├── dev/
     │   └── kustomization.yaml
@@ -81,18 +83,33 @@ kustomize/
 
 ## Quick Start
 
-**🚀 Fast Deployment (Testing):**
+### Fast Deployment (Testing)
+
+Deploys Keycloak + PostgreSQL with default credentials:
 
 ```bash
-# Deploy to base namespace (uses default passwords)
+# Deploy using Kustomize base (includes Keycloak + PostgreSQL)
 kubectl apply -k kustomize/base/
 
-# Check status
+# Watch pods starting
 kubectl get pods -n keycloak -w
+# Wait until both keycloak and postgres pods show: 1/1 Running
 
-# Access Keycloak
+# Access Keycloak (port-forward for testing)
 kubectl port-forward -n keycloak svc/keycloak 8080:8080
-# Login: admin / admin123
+```
+
+Access Keycloak at: <http://localhost:8080>
+
+**Default credentials:**
+- Username: `admin`
+- Password: `admin123`
+
+**Environment overlays:** For dev/staging/production environments:
+```bash
+kubectl apply -k kustomize/overlays/dev        # Development
+kubectl apply -k kustomize/overlays/staging    # Staging
+kubectl apply -k kustomize/overlays/production # Production
 ```
 
 ### 1. Configure Secrets (Production)
@@ -127,6 +144,19 @@ kubectl create secret generic postgres-secret \
   --from-literal=POSTGRES_PASSWORD=$DB_PASSWORD \
   --namespace keycloak
 ```
+
+**Helper Script:** Alternatively, use the provided script to automate secret creation:
+```bash
+# Create secrets with auto-generated passwords
+./create-secrets.sh keycloak
+# Or with custom passwords
+ADMIN_PASSWORD=YourSecurePassword DB_PASSWORD=YourDbPassword ./create-secrets.sh keycloak
+```
+The script will:
+- Create the namespace if it doesn't exist
+- Generate secure random passwords (or use provided ones)
+- Create all three required secrets
+- Display the credentials (save them securely!)
 
 ### 2. Review Configuration
 
@@ -271,92 +301,6 @@ Remove postgres.yaml from base kustomization and update database environment var
 ```
 
 ## Network Security and Custom Configuration
-
-### NetworkPolicy
-
-The base deployment includes a `NetworkPolicy` that implements least-privilege network security. It restricts network traffic to and from Keycloak pods.
-
-**Default Configuration:**
-
-- **Ingress (Incoming Traffic):**
-  - Allows traffic from ingress controller (namespace: `ingress-nginx`)
-  - Allows inter-pod communication for clustering (port 7800, 8080)
-
-- **Egress (Outgoing Traffic):**
-  - Allows DNS resolution to `kube-system` namespace
-  - Allows connection to PostgreSQL database (port 5432)
-  - Allows HTTPS/LDAPS for external integrations (ports 443, 636)
-
-**Important:** NetworkPolicy requires a CNI plugin that supports it (e.g., Calico, Cilium, Weave Net). Standard kubenet does not support NetworkPolicy.
-
-#### Customize NetworkPolicy for Different Ingress Controllers
-
-If you're using a different ingress controller or it's in a different namespace, create a patch in your overlay:
-
-**Example: Custom ingress namespace**
-
-Create `kustomize/overlays/production/networkpolicy-patch.yaml`:
-
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: keycloak
-spec:
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: my-ingress-namespace
-          podSelector:
-            matchLabels:
-              app.kubernetes.io/name: my-ingress-controller
-      ports:
-        - protocol: TCP
-          port: 8080
-        - protocol: TCP
-          port: 8443
-```
-
-Add to `kustomize/overlays/production/kustomization.yaml`:
-
-```yaml
-patches:
-  - path: networkpolicy-patch.yaml
-    target:
-      kind: NetworkPolicy
-      name: keycloak
-```
-
-#### Disable NetworkPolicy
-
-If your cluster doesn't support NetworkPolicy or you want to disable it, exclude it from the base:
-
-Create `kustomize/overlays/production/kustomization.yaml`:
-
-```yaml
-resources:
-  - ../../base
-  - "!../../base/networkpolicy.yaml"  # Exclude NetworkPolicy
-```
-
-**Note:** The `!` prefix excludes a resource from the base.
-
-### ConfigMap for Custom Configuration
-
-The base deployment includes a `ConfigMap` (`keycloak-config`) that you can use to add custom configurations like:
-
-- Custom realm definitions
-- Custom themes
-- Provider configurations
-- Any other file-based configuration
-
-**Default Configuration:**
-
-The base ConfigMap is empty by default (only contains commented examples). To use it, you need to:
-
-1. Add data to the ConfigMap
-2. Mount it in the Keycloak deployment
 
 #### Example: Add Custom Realm Configuration
 
@@ -700,6 +644,45 @@ kubectl delete -k kustomize/base
 
 ## Troubleshooting
 
+### Keycloak Pods in CrashLoopBackOff
+
+**Symptom:** Keycloak pods keep restarting and show `CrashLoopBackOff` status.
+
+**Common causes:**
+
+1. **PostgreSQL not ready or in wrong namespace**
+   
+   ```bash
+   # Check if postgres is running in the correct namespace
+   kubectl get pods -n keycloak -l app=postgres
+   
+   # If postgres is in wrong namespace (e.g., default), delete and redeploy
+   kubectl delete -f kustomize/base/postgres.yaml
+   kubectl apply -f kustomize/base/postgres.yaml
+   
+   # Verify it's now in the correct namespace
+   kubectl get pods -n keycloak -l app=postgres
+   ```
+
+2. **Password mismatch between Keycloak and PostgreSQL**
+   
+   The passwords in `secrets.yaml` must match those in `postgres.yaml`:
+   
+   ```bash
+   # Check the keycloak-db secret
+   kubectl get secret keycloak-db -n keycloak -o jsonpath='{.data.password}' | base64 -d
+   
+   # Check the postgres-secret
+   kubectl get secret postgres-secret -n keycloak -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d
+   
+   # They should both be: keycloak123 (default)
+   ```
+
+3. **Check Keycloak logs for errors**
+   ```bash
+   kubectl logs -n keycloak -l app=keycloak --tail=100
+   ```
+
 ### Check Pod Status
 
 ```bash
@@ -729,9 +712,30 @@ kubectl exec -it -n keycloak-prod <pod-name> -- /bin/bash
 ### Database Connection Issues
 
 ```bash
+# Verify postgres is running
+kubectl get pods -n keycloak-prod -l app=postgres
+
+# Check postgres service
+kubectl get svc postgres-service-prod -n keycloak-prod
+
 # Test database connectivity from Keycloak pod
 kubectl exec -it -n keycloak-prod <keycloak-pod> -- \
-  curl -v telnet://postgres-service-prod:5432
+  nc -zv postgres-service-prod 5432
+```
+
+### Port-Forward Connection Refused
+
+**Symptom:** `kubectl port-forward` fails with "connection refused"
+
+```bash
+# Verify pods are actually ready (1/1)
+kubectl get pods -n keycloak-prod
+
+# Check service endpoints
+kubectl get endpoints -n keycloak-prod
+
+# Try port-forward directly to pod instead of service
+kubectl port-forward -n keycloak-prod <pod-name> 8080:8080
 ```
 
 ## Production Best Practices

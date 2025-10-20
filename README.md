@@ -99,69 +99,100 @@ keycloak-ops/
 
 ## Quick Start
 
-### Option 1: Deploy with Helm
+### Option 1: Deploy with Kustomize (Recommended for Quick Testing)
+
+Kustomize includes everything (Keycloak + PostgreSQL) in one command:
 
 ```bash
-# Create namespace
-kubectl create namespace keycloak
+# Deploy using Kustomize base (includes Keycloak + PostgreSQL)
+kubectl apply -k kustomize/base/
 
-# Install Keycloak with Helm
-helm install keycloak ./helm/keycloak \
-  --namespace keycloak \
-  --set keycloak.admin.password=YourSecurePassword \
-  --set keycloak.database.password=YourSecurePassword
-
-# Check deployment status
-kubectl get pods -n keycloak
+# Watch pods starting
+kubectl get pods -n keycloak -w
+# Wait until both keycloak and postgres pods show: 1/1 Running
 
 # Access Keycloak (port-forward for testing)
 kubectl port-forward -n keycloak svc/keycloak 8080:8080
 ```
 
+**Default credentials:**
+- Username: `admin`
+- Password: `admin123`
+
 Access Keycloak at: <http://localhost:8080>
 
-### Option 2: Deploy with Kustomize
-
+**Environment overlays:** For dev/staging/production environments, use:
 ```bash
-# Deploy to dev environment
-kubectl apply -k kustomize/overlays/dev
-
-# Check deployment status
-kubectl get pods -n keycloak-dev
-
-# Access Keycloak (port-forward for testing)
-kubectl port-forward -n keycloak-dev svc/keycloak-dev 8080:8080
+kubectl apply -k kustomize/overlays/dev        # Development
+kubectl apply -k kustomize/overlays/staging    # Staging
+kubectl apply -k kustomize/overlays/production # Production
 ```
 
+### Option 2: Deploy with Helm
+
+**⚠️ Important:** The Helm chart does NOT include PostgreSQL. You must deploy it separately.
+
+```bash
+# Step 1: Create namespace
+kubectl create namespace keycloak
+
+# Step 2: Deploy PostgreSQL first
+kubectl apply -f kustomize/base/postgres.yaml
+
+# Step 3: Wait for PostgreSQL to be ready
+kubectl wait --for=condition=ready pod -l app=postgres -n keycloak --timeout=300s
+
+# Step 4: Install Keycloak with Helm
+# ⚠️ CRITICAL: database password MUST match postgres password (keycloak123)
+helm install keycloak ./helm/keycloak \
+  --namespace keycloak \
+  --set keycloak.admin.password=admin123 \
+  --set keycloak.database.password=keycloak123
+
+# Step 5: Watch deployment
+kubectl get pods -n keycloak -w
+# Wait until keycloak pods show: 1/1 Running
+
+# Step 6: Access Keycloak (port-forward for testing)
+kubectl port-forward -n keycloak svc/keycloak 8080:8080
+```
+
+**Default credentials:**
+- Username: `admin`  
+- Password: `admin123` (or the password you set)
+
 Access Keycloak at: <http://localhost:8080>
+
+> **Note:** For production deployments with external databases, see the [Helm Deployment Guide](docs/HELM_DEPLOYMENT.md).
 
 ## Local Development (Kind)
 
 For local development and testing with Kind (Kubernetes in Docker), see the [local/](local/) directory.
 
-**Quick local deployment with Kustomize:**
-
+### Method 1: Kustomize (Simplest)
 ```bash
-# See local/README.md for detailed instructions
+# Create Kind cluster
 kind create cluster --name keycloak-demo --config local/kind-config.yaml
-
-# Deploy using Kustomize base (includes postgres)
+# Deploy using Kustomize base (includes Keycloak + PostgreSQL)
 kubectl apply -k kustomize/base/
 
 # Watch pods starting
 kubectl get pods -n keycloak -w
 
+# Wait until both pods show: 1/1 Running
+
 # Port forward to access
 kubectl port-forward -n keycloak svc/keycloak 8080:8080
 # Access: http://localhost:8080 (admin/admin123)
 ```
-
-**Alternative: Deploy with Helm:**
-
+Access: <http://localhost:8080> (admin/admin123)
+### Method 2: Helm
 ```bash
+# Create Kind cluster
 kind create cluster --name keycloak-demo --config local/kind-config.yaml
+# Step 1: Deploy PostgreSQL first
+kubectl create namespace keycloak
 
-# Deploy postgres via Kustomize (helm doesn't include it)
 kubectl apply -f kustomize/base/postgres.yaml
 
 # Deploy keycloak via Helm

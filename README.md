@@ -11,9 +11,46 @@ This repository provides two deployment methods for Keycloak on Kubernetes:
 
 **✅ Status:** All deployments tested and working with Keycloak 26.4.0
 
-## ✨ Recent Updates (Version 26.4.0)
+## Prerequisites
 
-**All files have been updated to Keycloak 26.4.0**.
+### Required Tools
+
+#### 1. **Docker**
+Required for local development with Kind and container operations.
+
+- **Linux**: [Install Docker Engine](https://docs.docker.com/engine/install/#server)
+- **macOS**: [Install Docker Desktop for Mac](https://docs.docker.com/desktop/install/mac-install/)
+- **Windows**: [Install Docker Desktop for Windows](https://docs.docker.com/desktop/install/windows-install/)
+
+#### 2. **kubectl**
+Kubernetes command-line tool for cluster management.
+
+- **Linux**: [Install kubectl on Linux](https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/)
+- **macOS**: [Install kubectl on macOS](https://kubernetes.io/docs/tasks/tools/install-kubectl-macos/)
+- **Windows**: [Install kubectl on Windows](https://kubernetes.io/docs/tasks/tools/install-kubectl-windows/)
+
+#### 3. **Helm** (for Helm deployments)
+Kubernetes package manager - version 3.x required.
+
+- **All platforms**: [Installing Helm](https://helm.sh/docs/intro/install/)
+
+#### 4. **Kustomize** (for Kustomize deployments)
+Kubernetes native configuration management.
+
+- **All platforms**: [Installing Kustomize](https://kubectl.docs.kubernetes.io/installation/kustomize/)
+- **Note**: Kustomize is also built into `kubectl` (use `kubectl apply -k`)
+
+#### 5. **Kind** (optional, for local development)
+Kubernetes in Docker - for local testing.
+
+- **All platforms**: [Installing Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation)
+
+### Infrastructure Requirements
+
+- **Kubernetes cluster** v1.24 or higher
+- kubectl configured and authenticated to your cluster
+- (Optional) **NGINX Ingress Controller** for ingress support
+- (Optional) **cert-manager** for automated TLS certificate management
 
 ## Features
 
@@ -159,14 +196,6 @@ helm install keycloak ./helm/keycloak --namespace keycloak \
 - Resource customization
 - GitOps integration (ArgoCD, Flux)
 - Rollback strategies
-
-## Prerequisites
-
-- Kubernetes cluster v1.24+
-- kubectl configured for your cluster
-- For Helm: Helm 3.x installed
-- (Optional) NGINX Ingress Controller
-- (Optional) cert-manager for TLS certificates
 
 ## Configuration Examples
 

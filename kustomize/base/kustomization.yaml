@@ -11,6 +11,8 @@ resources:
   - deployment.yaml
   - service.yaml
   - ingress.yaml
+  - networkpolicy.yaml
+  - configmap.yaml
 
 commonLabels:
   app.kubernetes.io/managed-by: kustomize

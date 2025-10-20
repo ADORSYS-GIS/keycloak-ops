@@ -270,6 +270,225 @@ Remove postgres.yaml from base kustomization and update database environment var
   value: "5432"
 ```
 
+## Network Security and Custom Configuration
+
+### NetworkPolicy
+
+The base deployment includes a `NetworkPolicy` that implements least-privilege network security. It restricts network traffic to and from Keycloak pods.
+
+**Default Configuration:**
+
+- **Ingress (Incoming Traffic):**
+  - Allows traffic from ingress controller (namespace: `ingress-nginx`)
+  - Allows inter-pod communication for clustering (port 7800, 8080)
+
+- **Egress (Outgoing Traffic):**
+  - Allows DNS resolution to `kube-system` namespace
+  - Allows connection to PostgreSQL database (port 5432)
+  - Allows HTTPS/LDAPS for external integrations (ports 443, 636)
+
+**Important:** NetworkPolicy requires a CNI plugin that supports it (e.g., Calico, Cilium, Weave Net). Standard kubenet does not support NetworkPolicy.
+
+#### Customize NetworkPolicy for Different Ingress Controllers
+
+If you're using a different ingress controller or it's in a different namespace, create a patch in your overlay:
+
+**Example: Custom ingress namespace**
+
+Create `kustomize/overlays/production/networkpolicy-patch.yaml`:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: keycloak
+spec:
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: my-ingress-namespace
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: my-ingress-controller
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8443
+```
+
+Add to `kustomize/overlays/production/kustomization.yaml`:
+
+```yaml
+patches:
+  - path: networkpolicy-patch.yaml
+    target:
+      kind: NetworkPolicy
+      name: keycloak
+```
+
+#### Disable NetworkPolicy
+
+If your cluster doesn't support NetworkPolicy or you want to disable it, exclude it from the base:
+
+Create `kustomize/overlays/production/kustomization.yaml`:
+
+```yaml
+resources:
+  - ../../base
+  - "!../../base/networkpolicy.yaml"  # Exclude NetworkPolicy
+```
+
+**Note:** The `!` prefix excludes a resource from the base.
+
+### ConfigMap for Custom Configuration
+
+The base deployment includes a `ConfigMap` (`keycloak-config`) that you can use to add custom configurations like:
+
+- Custom realm definitions
+- Custom themes
+- Provider configurations
+- Any other file-based configuration
+
+**Default Configuration:**
+
+The base ConfigMap is empty by default (only contains commented examples). To use it, you need to:
+
+1. Add data to the ConfigMap
+2. Mount it in the Keycloak deployment
+
+#### Example: Add Custom Realm Configuration
+
+**Step 1:** Create a patch file `kustomize/overlays/production/configmap-realm.yaml`:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-config
+data:
+  realm.json: |
+    {
+      "realm": "production",
+      "enabled": true,
+      "displayName": "Production Realm",
+      "loginTheme": "keycloak",
+      "accountTheme": "keycloak",
+      "adminTheme": "keycloak",
+      "emailTheme": "keycloak",
+      "sslRequired": "external",
+      "registrationAllowed": false,
+      "registrationEmailAsUsername": true,
+      "resetPasswordAllowed": true,
+      "verifyEmail": true
+    }
+```
+
+**Step 2:** Mount the ConfigMap in the deployment. Create `kustomize/overlays/production/deployment-configmap-patch.yaml`:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+spec:
+  template:
+    spec:
+      containers:
+        - name: keycloak
+          volumeMounts:
+            - name: realm-config
+              mountPath: /opt/keycloak/data/import
+              readOnly: true
+      volumes:
+        - name: realm-config
+          configMap:
+            name: keycloak-config
+```
+
+**Step 3:** Update the Keycloak startup args to import the realm. Create `kustomize/overlays/production/deployment-import-patch.yaml`:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+spec:
+  template:
+    spec:
+      containers:
+        - name: keycloak
+          args:
+            - start-dev
+            - --import-realm
+```
+
+**Step 4:** Add patches to `kustomize/overlays/production/kustomization.yaml`:
+
+```yaml
+patches:
+  - path: configmap-realm.yaml
+    target:
+      kind: ConfigMap
+      name: keycloak-config
+  - path: deployment-configmap-patch.yaml
+    target:
+      kind: Deployment
+      name: keycloak
+  - path: deployment-import-patch.yaml
+    target:
+      kind: Deployment
+      name: keycloak
+```
+
+#### Example: Add Custom Theme
+
+For custom themes, you typically need to:
+
+1. Create a custom Docker image with your theme files, OR
+2. Use an init container to download theme files, OR
+3. Use a volume mount with the theme files in a ConfigMap (for small themes)
+
+**Option 3 (ConfigMap for small themes):**
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-config
+data:
+  theme.properties: |
+    parent=keycloak
+    import=common/keycloak
+    styles=css/custom.css
+  custom.css: |
+    /* Your custom CSS */
+    .login-pf body {
+      background: #1a1a1a;
+    }
+```
+
+Then mount it to `/opt/keycloak/themes/custom/`.
+
+#### Using ConfigMapGenerator
+
+Kustomize's `configMapGenerator` allows you to create ConfigMaps from files or literals:
+
+```yaml
+# In overlay kustomization.yaml
+configMapGenerator:
+  - name: keycloak-config
+    behavior: merge  # Merge with base ConfigMap
+    files:
+      - realm.json
+      - theme.properties
+    literals:
+      - LOG_LEVEL=INFO
+```
+
+**Note:** The `behavior: merge` option merges with the base ConfigMap instead of replacing it.
+
 ## Advanced Usage
 
 ### Create Custom Overlay

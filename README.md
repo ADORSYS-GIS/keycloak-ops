@@ -108,7 +108,8 @@ kubectl create namespace keycloak
 # Install Keycloak with Helm
 helm install keycloak ./helm/keycloak \
   --namespace keycloak \
-  --set keycloak.admin.password=YourSecurePassword
+  --set keycloak.admin.password=YourSecurePassword \
+  --set keycloak.database.password=YourSecurePassword
 
 # Check deployment status
 kubectl get pods -n keycloak

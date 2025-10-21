@@ -7,7 +7,7 @@
 The `keycloak` crate provides a comprehensive Rust client for the [Keycloak Admin REST API](https://www.keycloak.org/docs-api/26.0/rest-api/index.html).  
 Its main purpose is to automate Keycloak administration tasks such as managing realms, users, roles, and groups from Rust applications.
 
-- **Ecosystem Role:** Admin client for Keycloak; does not provide OpenID Connect integration or token validation for end-user authentication flows.
+- **Ecosystem Role:** Admin client for Keycloak designed specifically for **service accounts and admin credentials**. It does not provide OpenID Connect integration or token validation for end-user authentication flows. This crate is intended for backend automation and administrative tasks, not for user login flows.
 - **Maintenance:** Actively maintained (latest release: v26.4.0).
   - [Crates.io](https://crates.io/crates/keycloak): 100+ stars, regular updates, several contributors.
 
@@ -57,6 +57,7 @@ Its main purpose is to automate Keycloak administration tasks such as managing r
 
 - Token acquisition is handled by `KeycloakAdminToken::acquire`.
 - Token is automatically attached to requests.
+- Tokens have expiration times; the crate handles token refresh automatically for long-running operations.
 
 ## Example Usage
 
@@ -106,6 +107,75 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Delete the realm
     realm.delete().await?;
     Ok(())
+}
+```
+
+---
+
+# ⚠️ Common Error Patterns & Handling
+
+## Token Expiration
+
+**What happens:** If a token expires during a long-running operation, subsequent API calls will fail with a 401 Unauthorized error.
+
+**How to handle:**
+- The `KeycloakAdminToken::acquire` method should be called periodically to refresh the token.
+- For long-running applications, consider wrapping token acquisition in a refresh mechanism or catching 401 errors and re-authenticating.
+
+```rust
+// Example: Catching and handling token expiration
+match admin.realm("my-realm").users_get().await {
+    Err(e) if e.to_string().contains("401") => {
+        // Token expired, re-acquire
+        let new_token = KeycloakAdminToken::acquire(&url, &user, &password, &client).await?;
+        let admin = KeycloakAdmin::new(&url, new_token, client);
+        // Retry operation
+    }
+    result => result,
+}
+```
+
+## Resource Already Exists
+
+**What happens:** Attempting to create a realm, user, role, or group that already exists typically results in a 409 Conflict error.
+
+**How to handle:**
+- Check if the resource exists before attempting creation using GET endpoints (e.g., `realm.users_get()`, `realm.roles_get()`).
+- Alternatively, catch the 409 error and handle it gracefully:
+
+```rust
+match realm.users_post(UserRepresentation {
+    username: Some("existing-user".into()),
+    ..Default::default()
+}).await {
+    Err(e) if e.to_string().contains("409") => {
+        println!("User already exists, skipping creation");
+    }
+    result => result?,
+}
+```
+
+## HTTP Errors
+
+**Common HTTP error codes:**
+
+| Status Code | Meaning | Common Cause |
+| --- | --- | --- |
+| 400 | Bad Request | Invalid payload or malformed request |
+| 401 | Unauthorized | Invalid/expired credentials or token |
+| 403 | Forbidden | Insufficient permissions for the operation |
+| 404 | Not Found | Resource (realm, user, role) does not exist |
+| 409 | Conflict | Resource already exists |
+| 500 | Internal Server Error | Keycloak server error |
+
+**How to assess errors:**
+- Use `.await?` to propagate errors for debugging.
+- Log the full error response to understand what went wrong:
+
+```rust
+match admin.realm("my-realm").users_get().await {
+    Ok(users) => println!("Users: {:?}", users),
+    Err(e) => eprintln!("Error fetching users: {}", e),
 }
 ```
 
@@ -173,6 +243,45 @@ let tok = rust_keycloak::keycloak::OpenId::token("http://localhost:8080", &token
 println!("Access token: {}", tok.access_token);
 ```
 
+## Common Error Patterns & Handling
+
+**Token Acquisition Failures**
+
+**What happens:** Invalid credentials, incorrect realm, or unreachable Keycloak server result in token acquisition errors.
+
+**How to handle:**
+```rust
+match rust_keycloak::keycloak::OpenId::token("http://localhost:8080", &token_request).await {
+    Ok(token) => println!("Token acquired: {}", token.access_token),
+    Err(e) => eprintln!("Failed to acquire token: {}", e),
+}
+```
+
+**Invalid JWT or Token Expiration**
+
+**What happens:** Expired or malformed tokens fail during `jwt_decode` validation.
+
+**How to handle:**
+- Check token expiration time before using it
+- Implement token refresh logic using the `refresh_token` if available
+- Re-authenticate if token is invalid
+
+**HTTP Errors in Admin Operations**
+
+**What happens:** User creation, deletion, or group operations may fail with 400, 404, or 409 errors.
+
+**How to handle:**
+- Validate user data before sending requests
+- Check if user/group exists before deletion
+- Handle 409 Conflict errors when resources already exist
+
+| Status Code | Meaning | Common Cause |
+| --- | --- | --- |
+| 400 | Bad Request | Invalid user data or malformed request |
+| 401 | Unauthorized | Invalid or expired token |
+| 404 | Not Found | User or group does not exist |
+| 409 | Conflict | User/group already exists |
+
 ## References
 
    - [Crates.io: rust-keycloak](https://crates.io/crates/rust-keycloak)
@@ -196,3 +305,4 @@ println!("Access token: {}", tok.access_token);
 - Use `rust-keycloak` crate for OpenID Connect authentication flows and simple user management.
 
 ---
+ggggggg

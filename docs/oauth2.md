@@ -56,24 +56,6 @@ Using this crate, you can easily implement:
 - Token validation and claims extraction
 - Secure token storage patterns
 
-## ⚙️ Our Implementation Features
-
-**✅ JWT Token Management:**
-- **JWT Signature Verification:** Using Keycloak's JWKS endpoint
-- **Real-time Token Validation:** Cryptographic verification of token authenticity
-- **Claims Extraction:** User information from validated JWT tokens
-- **Token Expiration Handling:** Automatic validation of token lifetime
-- **Protected Resource Access:** Bearer token authentication for API endpoints
-
-**✅ Implemented Flows:**
-- **Resource Owner Password Grant:** Direct username/password authentication
-- **Implicit Grant Flow:** Browser-based authentication for SPAs  
-- **Authorization Code Flow with PKCE:** Most secure flow with refresh tokens
-- **JWT Validation:** Full cryptographic verification using RSA public keys
-- **Protected Endpoints:** `/protected` and `/api/userinfo` with token validation
-- **User Information Display:** Extracted from validated JWT claims
-- **Refresh Token Support:** Long-term access via Authorization Code flow
-
 ## 🧠 Architecture & Design
 
 **Core Modules:**

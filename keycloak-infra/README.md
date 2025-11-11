@@ -7,15 +7,16 @@ Complete production-ready Keycloak deployment on Kubernetes using Bitnami Helm c
 - [Keycloak Deployment with Bitnami Helm Charts](#keycloak-deployment-with-bitnami-helm-charts)
   - [📋 Table of Contents](#-table-of-contents)
   - [Overview](#overview)
-  - [Why Bitnami Charts?](#why-bitnami-charts)
   - [Prerequisites](#prerequisites)
   - [Project Structure](#project-structure)
   - [Deployment Options](#deployment-options)
     - [Option 1: Helm Deployment (Recommended)](#option-1-helm-deployment-recommended)
     - [Option 2: Kustomize Deployment](#option-2-kustomize-deployment)
   - [Quick Start (Helm)](#quick-start-helm)
+    - [Customizing Helm Configuration](#customizing-helm-configuration)
   - [Verify It Works](#verify-it-works)
   - [Next Steps](#next-steps)
+  - [Comparison Between Helm \& Kustomize](#comparison-between-helm--kustomize)
   - [Documentation](#documentation)
 
 ## Overview
@@ -32,20 +33,6 @@ This project provides a complete Keycloak Identity and Access Management (IAM) s
 - First deployment: 15-20 minutes (includes image downloads)
 - Subsequent deployments: 2-3 minutes (images cached)
 
-## Why Bitnami Charts?
-
-Bitnami Helm charts provide production-ready Kubernetes deployments with minimal configuration:
-
-**Key Benefits**:
-
-- ✅ **Production-Ready**: Pre-configured security, health checks, and secret management
-- ✅ **Zero Configuration**: PostgreSQL integration and networking configured automatically
-- ✅ **Enterprise Support**: Actively maintained by VMware/Broadcom with regular updates
-- ✅ **Time Savings**: Deploy in 30 minutes vs 2-3 days writing custom charts
-- ✅ **Comprehensive Features**: Metrics, ingress, TLS, HA, and backup capabilities included
-
-**Estimated effort**: 40+ hours to build custom charts vs 2 hours with Bitnami
-
 ## Prerequisites
 
 - **Docker** - For running kind cluster
@@ -60,7 +47,6 @@ Bitnami Helm charts provide production-ready Kubernetes deployments with minimal
 keycloak-infra/
 ├── README.md                          # Project overview and quick start
 ├── TECHNICAL_GUIDE.md                 # Detailed troubleshooting and configuration
-├── CHANGELOG.md                       # Version history
 └── keycloak-infra/
     ├── keycloak/                      # Helm deployment
     │   ├── Chart.yaml                 # Helm chart metadata
@@ -88,7 +74,7 @@ Best for: Production deployments, complex configurations, dependency management
 
 Best for: Simple deployments, GitOps workflows, learning Kubernetes
 
-See [kustomize/README.md](keycloak-infra/kustomize/README.md) for Kustomize instructions.
+See [kustomize/README.md](kustomize/README.md) for Kustomize instructions.
 
 ## Quick Start (Helm)
 
@@ -120,9 +106,48 @@ kubectl port-forward -n keycloak svc/my-keycloak 8080:80
 
 Open browser: **http://localhost:8080**
 
+### Customizing Helm Configuration
+
+You can customize the default Helm configuration by using the `values-dev.yaml` file to override default values and set your own configuration.
+
+**Usage Example**:
+
+```bash
+# Deploy with custom configuration
+helm install my-keycloak ./keycloak \
+  -f values-dev.yaml \
+  --namespace keycloak \
+  --create-namespace
+```
+
+**Common Customizations**:
+
+```yaml
+# Example values-dev.yaml customizations
+auth:
+  adminUser: myadmin
+  adminPassword: "mySecurePassword123"
+
+resources:
+  limits:
+    memory: 2Gi
+    cpu: 1500m
+  requests:
+    memory: 1Gi
+    cpu: 750m
+
+service:
+  type: LoadBalancer  # Instead of default ClusterIP
+```
+
+The `values-dev.yaml` file allows you to override any default configuration from `values.yaml` while keeping your customizations separate and maintainable.
+
 **Clean Up**:
 
 ```bash
+# Delete keycloak release from cluster
+helm uninstall my-keycloak -n keycloak
+
 # Delete cluster
 kind delete cluster --name keycloak-demo
 ```
@@ -146,11 +171,21 @@ Once pods are running (1/1 Ready status):
 4. **Customize**: Change themes, configure login flows
 5. **Development**: Use `values-dev.yaml` for fixed credentials (`admin/admin123`)
 
+## Comparison Between Helm & Kustomize
+
+| Feature | Helm | Kustomize |
+|---------|------|-----------|
+| Templating | Yes (Go templates) | No (patches & overlays) |
+| Package Management | Yes | No |
+| Dependencies | Yes | No |
+| Learning Curve | Moderate | Low |
+| Complexity | Higher | Lower |
+| Best For | Complex apps with many configurations | Simple deployments, GitOps |
+
 ## Documentation
 
-- **[TECHNICAL_GUIDE.md](docs/TECHNICAL_GUIDE.md)** - Comprehensive troubleshooting, configuration details, and production deployment guide
-- **[keycloak-infra/kustomize/README.md](keycloak-infra/kustomize/README.md)** - Kustomize deployment guide
-- **[CHANGELOG.md](docs/CHANGELOG.md)** - Version history and changes
+- **[TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md)** - Comprehensive troubleshooting, configuration details, and production deployment guide
+- **[keycloak-infra/kustomize/README.md](kustomize/README.md)** - Kustomize deployment guide
 - **[Bitnami Keycloak Chart](https://github.com/bitnami/charts/tree/main/bitnami/keycloak)** - Official Bitnami chart documentation
 
 ---
@@ -159,6 +194,5 @@ Once pods are running (1/1 Ready status):
 
 - Pods stuck? Images are large (~800MB), first pull takes 15-20 minutes
 - CrashLoopBackOff? Clean up PVCs and secrets, then reinstall
-- Port 8080 in use? Use `kubectl port-forward -n keycloak svc/my-keycloak 9090:80`
 
-For detailed troubleshooting, see [TECHNICAL_GUIDE.md](docs/TECHNICAL_GUIDE.md).
+For detailed troubleshooting, see [TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md).

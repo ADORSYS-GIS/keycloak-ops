@@ -8,8 +8,13 @@ Comprehensive technical documentation for the Keycloak deployment.
   - [Table of Contents](#table-of-contents)
   - [Image Configuration](#image-configuration)
     - [Why bitnamilegacy Images?](#why-bitnamilegacy-images)
+    - [Why NOT Official Keycloak Images?](#why-not-official-keycloak-images)
+    - [Why NOT Official PostgreSQL Images?](#why-not-official-postgresql-images)
     - [Security Flag Required](#security-flag-required)
     - [Current Image Versions](#current-image-versions)
+  - [Secret Management](#secret-management)
+    - [Auto-Generated Secrets](#auto-generated-secrets)
+    - [Secret Mismatch Problem](#secret-mismatch-problem)
   - [Configuration Details](#configuration-details)
     - [Default Credentials](#default-credentials)
     - [Database Configuration](#database-configuration)
@@ -17,8 +22,15 @@ Comprehensive technical documentation for the Keycloak deployment.
       - [Keycloak Pod](#keycloak-pod)
       - [PostgreSQL Pod](#postgresql-pod)
     - [Persistent Storage](#persistent-storage)
+  - [Startup Sequence](#startup-sequence)
+    - [PostgreSQL Startup](#postgresql-startup)
+    - [Keycloak Startup](#keycloak-startup)
+  - [Network Architecture](#network-architecture)
+  - [Chart Dependencies](#chart-dependencies)
   - [Architecture Decisions](#architecture-decisions)
     - [StatefulSets vs Deployments (Kustomize)](#statefulsets-vs-deployments-kustomize)
+      - [Why StatefulSets?](#why-statefulsets)
+      - [Implementation Notes](#implementation-notes)
   - [Troubleshooting](#troubleshooting)
     - [Issue: Pods Stuck in ImagePullBackOff](#issue-pods-stuck-in-imagepullbackoff)
     - [Issue: Keycloak CrashLoopBackOff with Password Authentication Failed](#issue-keycloak-crashloopbackoff-with-password-authentication-failed)
@@ -29,6 +41,24 @@ Comprehensive technical documentation for the Keycloak deployment.
   - [Development vs Production](#development-vs-production)
     - [Development (values-dev.yaml)](#development-values-devyaml)
     - [Production Considerations](#production-considerations)
+      - [1. Use External Database](#1-use-external-database)
+      - [2. Enable TLS/SSL](#2-enable-tlsssl)
+      - [3. Configure Ingress](#3-configure-ingress)
+      - [4. Set Appropriate Resource Limits](#4-set-appropriate-resource-limits)
+      - [5. Enable Monitoring](#5-enable-monitoring)
+      - [6. High Availability](#6-high-availability)
+      - [7. Secure Credentials](#7-secure-credentials)
+      - [8. Configure Backup Strategy](#8-configure-backup-strategy)
+      - [9. Logging and Auditing](#9-logging-and-auditing)
+      - [10. Network Policies](#10-network-policies)
+  - [Maintenance Tasks](#maintenance-tasks)
+    - [Backup Database](#backup-database)
+    - [Restore Database](#restore-database)
+    - [Update Chart Dependencies](#update-chart-dependencies)
+    - [View Helm Release History](#view-helm-release-history)
+    - [Rollback to Previous Version](#rollback-to-previous-version)
+    - [Export Current Configuration](#export-current-configuration)
+  - [Summary](#summary)
 
 ## Image Configuration
 
@@ -48,6 +78,29 @@ This deployment uses **`bitnamilegacy`** images instead of the standard `bitnami
 4. **Integration**: The chart expects specific container structure, environment variables, and initialization scripts that only Bitnami-packaged images provide
 
 **Note**: Despite the "legacy" name, these images are actively maintained and receive security patches. They're legacy only in the sense that they're the older naming convention.
+
+### Why NOT Official Keycloak Images?
+
+Attempted using `quay.io/keycloak/keycloak` but encountered multiple compatibility issues:
+
+1. **Path Incompatibility**: Official images use `/opt/keycloak` vs `/opt/bitnami/keycloak`
+2. **Init Container Failures**: Chart's prepare-write-dirs init container fails with different directory structure
+3. **Environment Variables**: Different variable names and formats (e.g., `KC_DB_URL` vs Bitnami's conventions)
+4. **Volume Mounts**: Incompatible mount paths break the chart's volume configuration
+5. **Database Config**: Different connection parameter formats and configuration methods
+
+**Conclusion**: The Bitnami Helm chart is tightly coupled to Bitnami image structure. Using official images would require rewriting most of the chart templates.
+
+### Why NOT Official PostgreSQL Images?
+
+Similar issues with `postgres:17-alpine` and other official PostgreSQL images:
+
+1. **Data Directory**: Uses `/var/lib/postgresql` vs `/bitnami/postgresql`
+2. **Initialization Scripts**: Different script locations (`/docker-entrypoint-initdb.d` vs Bitnami's structure)
+3. **Health Checks**: Incompatible probe commands (different `pg_isready` paths)
+4. **User Management**: Different authentication configuration and user creation methods
+
+**Recommendation**: Stick with `bitnamilegacy` images for both Keycloak and PostgreSQL to ensure full compatibility with the Bitnami Helm chart.
 
 ### Security Flag Required
 
@@ -76,6 +129,49 @@ global:
 | Keycloak | `bitnamilegacy/keycloak` | 26.3.3-debian-12-r0 |
 | PostgreSQL | `bitnamilegacy/postgresql` | 17.6.0-debian-12-r0 |
 | Config CLI | `bitnamilegacy/keycloak-config-cli` | 6.4.0-debian-12-r11 |
+
+## Secret Management
+
+### Auto-Generated Secrets
+
+The Helm chart automatically creates two secrets during installation:
+
+- **`my-keycloak`**: Contains Keycloak admin password
+- **`my-keycloak-postgresql`**: Contains PostgreSQL database passwords
+
+**Critical**: Both secrets must be created in the same deployment to ensure password synchronization between Keycloak and PostgreSQL.
+
+**Retrieve admin password**:
+```bash
+kubectl get secret my-keycloak -n keycloak -o jsonpath="{.data.admin-password}" | base64 -d
+echo
+```
+
+### Secret Mismatch Problem
+
+A common issue occurs when secrets and PVCs get out of sync:
+
+**Scenario**:
+1. Deploy → Creates secret A with password X
+2. PostgreSQL initializes database with password X
+3. Uninstall (but PVC persists with old data)
+4. Redeploy → Creates secret B with password Y
+5. PostgreSQL uses OLD database (password X) but Keycloak has NEW password Y
+6. **Result**: `FATAL: password authentication failed for user "bn_keycloak"`
+
+**Solution**: Always delete PVCs and secrets together:
+```bash
+# Complete cleanup
+helm uninstall my-keycloak -n keycloak
+kubectl delete pvc --all -n keycloak
+kubectl delete secret --all -n keycloak
+
+# Wait for cleanup to complete
+kubectl get all -n keycloak  # Should show no resources
+
+# Fresh install
+helm install my-keycloak ./keycloak --namespace keycloak
+```
 
 ## Configuration Details
 
@@ -122,6 +218,123 @@ echo
 - **Storage Class**: `standard` (kind's default)
 - **Access Mode**: ReadWriteOnce
 
+## Startup Sequence
+
+Understanding the startup sequence helps set realistic expectations for deployment times.
+
+### PostgreSQL Startup
+
+**Timeline for `my-keycloak-postgresql-0`**:
+
+1. **Image pull**: 10-15 minutes (first time only, ~800MB image)
+2. **Init container**: ~5 seconds
+3. **PostgreSQL start**: ~10 seconds
+4. **Database initialization**: ~20 seconds
+5. **Ready state**: ~1 minute after image is pulled
+
+**Total**: ~1 minute (after image cached) or ~15 minutes (first deployment)
+
+### Keycloak Startup
+
+**Timeline for `my-keycloak-0`**:
+
+1. **Image pull**: 10-15 minutes (first time only, ~800MB image)
+2. **Init container** (prepare-write-dirs): ~5 seconds
+3. **Wait for PostgreSQL**: Variable (depends on PostgreSQL readiness)
+4. **Database schema creation**: ~60 seconds
+5. **JGroups clustering setup**: ~30 seconds
+6. **Quarkus application startup**: ~30 seconds
+7. **Master realm initialization**: ~30 seconds
+8. **Ready state**: ~3 minutes after PostgreSQL is ready
+
+**Total First Deploy**: ~18 minutes (includes image pulls)  
+**Subsequent Deploys**: ~3 minutes (images cached)
+
+**What to expect**:
+```
+0:00  - Deployment created
+0:30  - Images pulling (can take 10-15 min)
+12:00 - PostgreSQL container starting
+13:00 - PostgreSQL ready (1/1 Running)
+13:30 - Keycloak container starting
+16:00 - Keycloak ready (1/1 Running)
+```
+
+## Network Architecture
+
+The following diagram shows the network flow and service architecture:
+
+```
+┌─────────────────────────────────────────────┐
+│  External Access                            │
+│  (kubectl port-forward or Ingress)          │
+└──────────────────────┬──────────────────────┘
+                       │
+                       ▼
+         ┌─────────────────────┐
+         │  my-keycloak        │ Service (ClusterIP)
+         │  Port: 80           │
+         └────────┬────────────┘
+                  │
+                  ▼
+         ┌─────────────────────┐
+         │  my-keycloak-0      │ Pod (StatefulSet)
+         │  Port: 8080         │
+         └────────┬────────────┘
+                  │
+                  │ JDBC Connection
+                  ▼
+         ┌──────────────────────────┐
+         │  my-keycloak-postgresql  │ Service (ClusterIP)
+         │  Port: 5432              │
+         └────────┬─────────────────┘
+                  │
+                  ▼
+         ┌───────────────────────────┐
+         │  my-keycloak-postgresql-0 │ Pod (StatefulSet)
+         │  Port: 5432               │
+         │  PVC: data-my-keycloak-   │
+         │       postgresql-0        │
+         └───────────────────────────┘
+```
+
+**Key Points**:
+- Keycloak connects to PostgreSQL via internal ClusterIP service
+- External access requires port-forward (dev) or Ingress (prod)
+- StatefulSets provide stable pod names and network identities
+- PostgreSQL data persists in a PVC
+
+## Chart Dependencies
+
+The Keycloak Helm chart depends on two sub-charts from Bitnami:
+
+**From `Chart.yaml`**:
+```yaml
+dependencies:
+  - name: postgresql
+    version: 16.x.x
+    repository: oci://registry-1.docker.io/bitnamicharts
+    condition: postgresql.enabled
+
+  - name: common
+    version: 2.x.x
+    repository: oci://registry-1.docker.io/bitnamicharts
+```
+
+**What each provides**:
+- **postgresql**: Bundled PostgreSQL database (can be disabled for external DB)
+- **common**: Bitnami common templates and helpers
+
+**Important**: `Chart.lock` pins exact versions for reproducible builds.
+
+**Update dependencies**:
+```bash
+cd keycloak-infra/keycloak
+helm dependency update
+```
+
+This downloads the latest chart versions matching the version constraints in `Chart.yaml`.
+
 ## Architecture Decisions
 
 ### StatefulSets vs Deployments (Kustomize)
@@ -159,70 +372,6 @@ The Kustomize deployment uses **StatefulSets** for both Keycloak and PostgreSQL 
 - PVCs are stable and bound to specific pod ordinals
 - Survives pod restarts and rescheduling
 - Better for future stateful requirements
-
-#### Comparison: Deployment vs StatefulSet
-
-| Feature | Deployment | StatefulSet |
-|---------|------------|-------------|
-| Pod Names | Random (keycloak-abc123-xyz) | Ordered (keycloak-0, keycloak-1) |
-| Network Identity | Unstable | Stable DNS names |
-| Startup Order | Parallel (all at once) | Sequential (0 → 1 → 2) |
-| PVC Binding | Shared or ephemeral | Stable per-pod binding |
-| Best For | Stateless apps | Stateful apps, databases, caches |
-| Scaling | Fast (parallel) | Slower (sequential) |
-
-#### Practical Benefits
-
-**For Development:**
-```bash
-# Always connect to the same pod
-kubectl port-forward -n keycloak dev-keycloak-0 8080:8080
-
-# Easy to identify in logs
-kubectl logs -n keycloak dev-keycloak-0 -f
-```
-
-**For Production:**
-```bash
-# Connect to specific instance for debugging
-kubectl exec -it -n keycloak prod-keycloak-1 -- bash
-
-# Verify all replicas are running
-kubectl get pods -n keycloak
-# NAME                READY   STATUS    RESTARTS   AGE
-# prod-keycloak-0     1/1     Running   0          10m
-# prod-keycloak-1     1/1     Running   0          9m
-# prod-keycloak-2     1/1     Running   0          8m
-```
-
-**For Cache Clustering:**
-- JGroups JDBC_PING can identify cluster members by stable names
-- Cache coordination is more reliable
-- Better for session affinity and sticky sessions
-
-#### Trade-offs
-
-**Advantages:**
-- ✅ Predictable and stable
-- ✅ Better for stateful applications
-- ✅ Easier debugging and monitoring
-- ✅ Optimal for distributed caching
-
-**Disadvantages:**
-- ⚠️ Sequential scaling (slower)
-- ⚠️ More complex than Deployments
-- ⚠️ Requires headless service for full DNS resolution
-
-#### When to Use StatefulSets
-
-Use StatefulSets when your application:
-- Requires stable network identities
-- Uses distributed caching or clustering
-- Needs ordered deployment/shutdown
-- Requires persistent storage per instance
-- Benefits from predictable pod names
-
-**For Keycloak**: All of the above apply, making StatefulSet the optimal choice for both development and production deployments.
 
 #### Implementation Notes
 
@@ -588,13 +737,110 @@ networkPolicy:
 
 ---
 
+## Maintenance Tasks
+
+### Backup Database
+
+Regular backups are critical for production deployments:
+
+```bash
+# Dump the database to a local file
+kubectl exec my-keycloak-postgresql-0 -n keycloak -- \
+  pg_dump -U bn_keycloak bitnami_keycloak > backup-$(date +%Y%m%d).sql
+
+# Verify backup file
+ls -lh backup-*.sql
+```
+
+**Best practices**:
+- Schedule automated backups (cron, Kubernetes CronJob)
+- Store backups in secure off-cluster storage (S3, GCS, Azure Blob)
+- Test restore procedures regularly
+- Keep multiple backup versions (daily, weekly, monthly)
+
+### Restore Database
+
+Restore from a backup file:
+
+```bash
+# Restore from backup file
+kubectl exec -i my-keycloak-postgresql-0 -n keycloak -- \
+  psql -U bn_keycloak bitnami_keycloak < backup-20251110.sql
+```
+
+**Warning**: This overwrites all current data. Test in a non-production environment first.
+
+### Update Chart Dependencies
+
+Update PostgreSQL and common chart dependencies:
+
+```bash
+# Update dependencies to latest matching versions
+cd keycloak-infra/keycloak
+helm dependency update
+
+# Review changes
+cat Chart.lock
+
+# Upgrade the release
+helm upgrade my-keycloak . -n keycloak
+```
+
+### View Helm Release History
+
+Track all deployments and changes:
+
+```bash
+# View release history
+helm history my-keycloak -n keycloak
+
+# Example output:
+# REVISION  UPDATED                   STATUS      CHART           DESCRIPTION
+# 1         Mon Oct 21 10:00:00 2024  superseded  keycloak-25.2.0 Install complete
+# 2         Tue Oct 22 14:30:00 2024  deployed    keycloak-25.2.0 Upgrade complete
+```
+
+### Rollback to Previous Version
+
+Rollback if an upgrade causes issues:
+
+```bash
+# Rollback to previous revision
+helm rollback my-keycloak -n keycloak
+
+# Or rollback to specific revision
+helm rollback my-keycloak 1 -n keycloak
+
+# Verify rollback
+helm history my-keycloak -n keycloak
+```
+
+### Export Current Configuration
+
+Save your current values for reference or migration:
+
+```bash
+# Get all current values
+helm get values my-keycloak -n keycloak > current-values.yaml
+
+# Get all values including defaults
+helm get values my-keycloak -n keycloak --all > all-values.yaml
+```
+
+---
+
 ## Summary
 
 This guide covers:
-- ✅ Why we use bitnamilegacy images and security considerations
-- ✅ Detailed troubleshooting for common issues
+- ✅ Why we use bitnamilegacy images and why official images don't work
+- ✅ Secret management and common password mismatch issues
+- ✅ Detailed startup sequence and timing expectations
+- ✅ Network architecture and service flow
+- ✅ Chart dependencies and how to update them
+- ✅ Comprehensive troubleshooting for common issues
 - ✅ Configuration options and resource settings
 - ✅ Development vs production deployment strategies
 - ✅ Production hardening checklist
+- ✅ Maintenance tasks (backup, restore, rollback)
 
-For basic usage and getting started, see [README.md](README.md).
+For basic usage and getting started, see [README.md](../keycloak-infra/README.md).

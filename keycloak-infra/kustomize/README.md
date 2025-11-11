@@ -14,6 +14,7 @@ Alternative deployment method using Kustomize instead of Helm.
 
 ```bash
 # Deploy to cluster
+cd keycloak-infra/kustomize
 kubectl apply -k overlays/dev/
 
 # Wait for pods to be ready
@@ -140,6 +141,16 @@ Access at: http://localhost:8080
 #### Step 6: Configure Ingress (Recommended for Production)
 
 For production access, set up an Ingress with TLS instead of port-forwarding. See the [Add Ingress](#add-ingress) section below.
+
+**CLean Up**:
+
+```bash
+# Delete dev environment
+kubectl delete -k overlays/dev/
+
+# Delete prod environment
+kubectl delete -k overlays/prod/
+```
 
 ## Structure
 
@@ -322,33 +333,6 @@ kubectl describe statefulset -n keycloak dev-postgresql
 kubectl get secrets -n keycloak
 ```
 
-## Comparison with Helm
-
-| Feature | Helm | Kustomize |
-|---------|------|-----------|
-| Templating | Yes (Go templates) | No (patches & overlays) |
-| Package Management | Yes | No |
-| Dependencies | Yes | No |
-| Learning Curve | Moderate | Low |
-| Complexity | Higher | Lower |
-| Best For | Complex apps with many configurations | Simple deployments, GitOps |
-
-## Production Checklist
-
-Before deploying to production:
-
-- [ ] Update admin password in secrets
-- [ ] Update PostgreSQL password in secrets
-- [ ] Configure external database (recommended)
-- [ ] Set up Ingress with TLS
-- [ ] Configure monitoring
-- [ ] Set appropriate resource limits
-- [ ] Enable Pod Disruption Budget
-- [ ] Configure backup strategy
-- [ ] Set up network policies
-
-For detailed production guidance, see [TECHNICAL_GUIDE.md](../../TECHNICAL_GUIDE.md).
-
 ## Common Issues
 
 ### Pods Stuck in ImagePullBackOff
@@ -387,5 +371,5 @@ kubectl port-forward -n keycloak svc/dev-keycloak 9090:80
 
 For more details, see:
 
-- [Main README](../../README.md) - Project overview
-- [TECHNICAL_GUIDE](../../TECHNICAL_GUIDE.md) - Detailed troubleshooting
+- [Main README](../README.md) - Project overview
+- [TECHNICAL_GUIDE](../TECHNICAL_GUIDE.md) - Detailed troubleshooting
